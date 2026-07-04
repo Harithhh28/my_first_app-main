@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'plan.dart';
 import 'progress.dart';
 import 'help.dart';
@@ -35,12 +36,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Rehab Ai',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-        fontFamily: 'Roboto',
-      ),
-      home: const AuthWrapper(), // Start at the wrapper screen
+      theme: AppTheme.dark,
+      home: const AuthWrapper(),
     );
   }
 }
@@ -101,22 +98,22 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF090C14),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF111827),
         elevation: 0,
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(1.0),
-          child: Container(color: Colors.grey[200], height: 1.0),
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: const Color(0xFF1E293B), height: 1.0),
         ),
         title: Row(
           children: [
-            Icon(Icons.fitness_center, color: Colors.blueAccent),
-            SizedBox(width: 8),
-            Text(
+            Icon(Icons.fitness_center, color: const Color(0xFF4353FF)),
+            const SizedBox(width: 8),
+            const Text(
               "Rehab Ai",
               style: TextStyle(
-                color: Colors.black,
+                color: Colors.white,
                 fontWeight: FontWeight.bold,
                 fontSize: 20,
               ),
@@ -125,7 +122,7 @@ class _MainScreenState extends State<MainScreen> {
         ),
         actions: [
           PopupMenuButton<String>(
-            icon: Icon(Icons.person_outline, color: Colors.black, size: 28),
+          icon: const Icon(Icons.person_outline, color: Colors.white, size: 28),
             offset: const Offset(0, 50), // Pushes the menu slightly down
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -156,9 +153,9 @@ class _MainScreenState extends State<MainScreen> {
                 value: 'profile',
                 child: Row(
                   children: [
-                    Icon(Icons.person, color: Colors.blueGrey[700], size: 20),
-                    SizedBox(width: 12),
-                    Text('My Profile'),
+                    Icon(Icons.person, color: Colors.blueGrey[300], size: 20),
+                    const SizedBox(width: 12),
+                    const Text('My Profile', style: TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
@@ -168,9 +165,9 @@ class _MainScreenState extends State<MainScreen> {
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                    SizedBox(width: 12),
-                    Text(
+                    const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                    const SizedBox(width: 12),
+                    const Text(
                       'Log Out',
                       style: TextStyle(
                         color: Colors.redAccent,
@@ -188,11 +185,11 @@ class _MainScreenState extends State<MainScreen> {
       body: _pages[_selectedIndex], // Shows the active page
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        currentIndex: _selectedIndex, // Highlights active tab
-        onTap: _onItemTapped, // Switches tabs
-        selectedItemColor: Colors.blueAccent,
-        unselectedItemColor: Colors.grey[600],
+        backgroundColor: const Color(0xFF111827),
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        selectedItemColor: const Color(0xFF4353FF),
+        unselectedItemColor: const Color(0xFF64748B),
         selectedLabelStyle: TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 12,
