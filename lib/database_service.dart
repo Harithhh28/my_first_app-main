@@ -48,6 +48,76 @@ class DatabaseService {
     }
   }
 
+  // 🔥 CALCULATE STREAK + RECOVERY % from list of workout data
+  Map<String, dynamic> calculateStreakAndRecoveryFromList(List<Map<String, dynamic>> workouts) {
+    if (workouts.isEmpty) {
+      return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};
+    }
+
+    // ── Recovery %: average form score of last 7 sessions ──────────────
+    final recentDocs = workouts.take(7).toList();
+    double totalForm = 0;
+    int formCount = 0;
+    for (final data in recentDocs) {
+      if (data['formScore'] != null) {
+        totalForm += (data['formScore'] as num).toDouble();
+        formCount++;
+      }
+    }
+    final int recoveryPct = formCount > 0 ? (totalForm / formCount).round() : 0;
+
+    // ── Streak: count consecutive calendar days with at least 1 workout ─
+    // Build a set of unique workout dates (YYYY-MM-DD strings)
+    final Set<String> workoutDates = {};
+    for (final data in workouts) {
+      final ts = data['date'];
+      DateTime? dt;
+      if (ts != null && ts is Timestamp) {
+        dt = ts.toDate().toLocal();
+      } else if (ts == null) {
+        // Fallback for pending writes
+        dt = DateTime.now().toLocal();
+      }
+      if (dt != null) {
+        workoutDates.add("${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}");
+      }
+    }
+
+    int streak = 0;
+    final now = DateTime.now().toLocal();
+    final todayKey = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+    // If no workout yet today, start counting from yesterday
+    // (so the streak isn't killed just because you haven't trained yet today)
+    DateTime cursor = workoutDates.contains(todayKey)
+        ? now
+        : now.subtract(const Duration(days: 1));
+
+    while (true) {
+      final key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
+      if (workoutDates.contains(key)) {
+        streak++;
+        cursor = cursor.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+
+    // ── Last 7-day bar chart indicators ─────────────────────────────────
+    // Index 0 = 6 days ago (leftmost), index 6 = today (rightmost)
+    final List<bool> weekDays = List.generate(7, (i) {
+      final day = DateTime.now().toLocal().subtract(Duration(days: 6 - i));
+      final key = "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
+      return workoutDates.contains(key);
+    });
+
+    return {
+      'streak': streak,
+      'recovery': recoveryPct,
+      'weekDays': weekDays,
+    };
+  }
+
   // 🔥 CALCULATE STREAK + RECOVERY % from workout history
   Future<Map<String, dynamic>> getStreakAndRecovery() async {
     try {
@@ -60,62 +130,8 @@ class DatabaseService {
           .limit(30)
           .get();
 
-      if (snapshot.docs.isEmpty) {
-        return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};
-      }
-
-      final docs = snapshot.docs;
-
-      // ── Recovery %: average form score of last 7 sessions ──────────────
-      final recentDocs = docs.take(7).toList();
-      double totalForm = 0;
-      int formCount = 0;
-      for (final doc in recentDocs) {
-        final data = doc.data();
-        if (data['formScore'] != null) {
-          totalForm += (data['formScore'] as num).toDouble();
-          formCount++;
-        }
-      }
-      final int recoveryPct = formCount > 0 ? (totalForm / formCount).round() : 0;
-
-      // ── Streak: count consecutive calendar days with at least 1 workout ─
-      // Build a set of unique workout dates (YYYY-MM-DD strings)
-      final Set<String> workoutDates = {};
-      for (final doc in docs) {
-        final data = doc.data();
-        final ts = data['date'];
-        if (ts != null && ts is Timestamp) {
-          final dt = ts.toDate().toLocal();
-          workoutDates.add("${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}");
-        }
-      }
-
-      int streak = 0;
-      DateTime cursor = DateTime.now().toLocal();
-      while (true) {
-        final key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
-        if (workoutDates.contains(key)) {
-          streak++;
-          cursor = cursor.subtract(const Duration(days: 1));
-        } else {
-          break;
-        }
-      }
-
-      // ── Last 7-day bar chart indicators ─────────────────────────────────
-      // Index 0 = today (leftmost), index 6 = 6 days ago (rightmost)
-      final List<bool> weekDays = List.generate(7, (i) {
-        final day = DateTime.now().toLocal().subtract(Duration(days: i));
-        final key = "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
-        return workoutDates.contains(key);
-      });
-
-      return {
-        'streak': streak,
-        'recovery': recoveryPct,
-        'weekDays': weekDays,
-      };
+      final workouts = snapshot.docs.map((doc) => doc.data()).toList();
+      return calculateStreakAndRecoveryFromList(workouts);
     } catch (e) {
       print("Error calculating streak/recovery: $e");
       return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};

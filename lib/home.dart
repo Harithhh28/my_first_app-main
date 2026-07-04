@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_ai/firebase_ai.dart';
@@ -18,39 +19,64 @@ class _HomeScreenState extends State<HomeScreen> {
   // This will store the AI generated plan once it finishes
   Map<String, dynamic>? _generatedPlan;
 
-  // 📊 Dynamic stats loaded from Firestore
+  // 📊 Dynamic stats loaded from Firestore in real-time
   int _streak = 0;
   int _recoveryPct = 0;
   List<bool> _weekDays = List.filled(7, false);
   String _userName = "";
   bool _statsLoaded = false;
 
+  StreamSubscription? _workoutsSub;
+  StreamSubscription? _profileSub;
+
   @override
   void initState() {
     super.initState();
-    _loadStats();
+    _initRealtimeListeners();
   }
 
-  Future<void> _loadStats() async {
-    try {
-      final db = DatabaseService();
-      // Load streak + recovery from workout history
-      final stats = await db.getStreakAndRecovery();
-      // Load the user's name from their profile
-      final profileSnap = await db.getUserProfile().first;
+  void _initRealtimeListeners() {
+    final db = DatabaseService();
+
+    // Listen to user profile updates (name, etc.)
+    _profileSub = db.getUserProfile().listen((profileSnap) {
       final profileData = profileSnap.data() as Map<String, dynamic>?;
+      if (mounted) {
+        setState(() {
+          _userName = profileData?['name'] as String? ?? "";
+        });
+      }
+    }, onError: (err) {
+      debugPrint("Error listening to profile: $err");
+    });
+
+    // Listen to workouts changes to calculate streak + recovery in real time
+    _workoutsSub = db.getUserWorkouts().listen((snapshot) {
+      final workouts = snapshot.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+      final stats = db.calculateStreakAndRecoveryFromList(workouts);
       if (mounted) {
         setState(() {
           _streak      = stats['streak'] as int? ?? 0;
           _recoveryPct = stats['recovery'] as int? ?? 0;
           _weekDays    = List<bool>.from(stats['weekDays'] as List? ?? []);
-          _userName    = profileData?['name'] as String? ?? "";
           _statsLoaded = true;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _statsLoaded = true);
-    }
+    }, onError: (err) {
+      debugPrint("Error listening to workouts: $err");
+      if (mounted) {
+        setState(() {
+          _statsLoaded = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _workoutsSub?.cancel();
+    _profileSub?.cancel();
+    super.dispose();
   }
 
   // 🧠 THE PROMPT ENGINEERING ENGINE
@@ -68,17 +94,31 @@ class _HomeScreenState extends State<HomeScreen> {
         model: 'gemini-3.1-flash-lite',
         systemInstruction: Content.text(
           "You are a clinical physical therapist AI. "
-          "The user will describe their injury. You must generate a safe, multi-week physical therapy plan for them. "
-          "Respond strictly in valid JSON format with the following keys: "
+          "The user will describe their injury. Generate a safe, progressive multi-week physical therapy plan. "
+          "Respond ONLY with a single valid JSON object — no markdown, no code fences, no extra text. "
+          "The JSON must have these exact keys: "
           "'title' (String, e.g., 'Ankle Sprain Recovery'), "
-          "'description' (String, brief medical context), "
+          "'injuryArea' (String — the main body part, e.g., 'Ankle', 'Knee', 'Shoulder', 'Lower Back', 'Hip'), "
+          "'description' (String, brief clinical context, 1-2 sentences), "
           "'duration' (String, e.g., '4 WEEKS | 15 MIN/DAY'), "
-          "'bullets' (List of 3 short strings, e.g., ['Reduce swelling', 'Iso holds', 'Return to sport']), "
-          "'weeks' (List of 4 objects representing weeks. Each object has: "
-          "'week' (String, e.g., 'WEEK 1'), and "
-          "'days' (List of 2-3 day objects, where each day object has "
-          "'day' (String, e.g., 'Day 1 - 15 Min') and 'details' (String, description of exercises with sets/reps, e.g., '10x ankle circles (3 sets)'))). "
-          "Do not include Markdown formatting like ```json in your response, just the raw JSON object."
+          "'bullets' (List of exactly 3 short goal strings), "
+          "'weeks' (List of exactly 4 week objects). "
+          "Each week object has: 'week' (String, e.g., 'WEEK 1') and "
+          "'days' (List of exactly 3 day objects). "
+          "Each day object has: "
+          "'day' (String, e.g., 'Day 1 - 15 Min'), "
+          "'focus' (String, one-line theme e.g., 'Mobility & Swelling Reduction'), "
+          "'exercises' (List of 2-4 exercise objects). "
+          "Each exercise object has: "
+          "'name' (String — a SHORT exercise name using plain words the camera AI can detect, "
+          "e.g., 'Squats', 'Ankle Dorsiflexion', 'Shoulder Raise', 'Leg Raise', 'Calf Raise', 'Bicep Curl'), "
+          "'sets' (int), "
+          "'reps' (int), "
+          "'notes' (String, brief coaching tip). "
+          "Make exercises PROGRESSIVELY HARDER across weeks. "
+          "Days within the same week should target DIFFERENT movement patterns "
+          "(e.g., Day 1 = strength, Day 2 = balance/stability, Day 3 = flexibility/ROM). "
+          "Do not repeat the same exercise on consecutive days."
         ),
       );
 
@@ -195,12 +235,31 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: List.generate(7, (index) {
                             final bool done = _statsLoaded && index < _weekDays.length && _weekDays[index];
-                            return Container(
-                              width: 12, height: 32,
-                              decoration: BoxDecoration(
-                                color: done ? Colors.orangeAccent : const Color(0xFF1E293B),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
+
+                            // Calculate the day of the week label (e.g. M, T, W, T, F, S, S)
+                            final day = DateTime.now().toLocal().subtract(Duration(days: 6 - index));
+                            final weekdayLabel = ['M', 'T', 'W', 'T', 'F', 'S', 'S'][day.weekday - 1];
+
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 12, height: 32,
+                                  decoration: BoxDecoration(
+                                    color: done ? Colors.orangeAccent : const Color(0xFF1E293B),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  weekdayLabel,
+                                  style: TextStyle(
+                                    color: done ? Colors.orangeAccent : Colors.blueGrey[600],
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             );
                           }),
                         ),
@@ -279,17 +338,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 🛠️ COMPONENT: The Generated AI Plan Card
   Widget _buildGeneratedPlanCard() {
-    // Extracting the JSON data safely
-    String title = _generatedPlan!['title'] ?? "Custom Protocol";
+    String title       = _generatedPlan!['title'] ?? "Custom Protocol";
     String description = _generatedPlan!['description'] ?? "AI personalized regimen.";
-    String duration = _generatedPlan!['duration'] ?? "TBD";
+    String duration    = _generatedPlan!['duration'] ?? "TBD";
+    String injuryArea  = _generatedPlan!['injuryArea'] ?? "";
     List<dynamic> bulletsDynamic = _generatedPlan!['bullets'] ?? [];
     List<String> bullets = bulletsDynamic.map((e) => e.toString()).toList();
     List<dynamic>? customWeeks = _generatedPlan!['weeks'];
 
     return GestureDetector(
       onTap: () {
-        // Pass the dynamically generated data directly into the detailed syllabus view!
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -298,8 +356,9 @@ class _HomeScreenState extends State<HomeScreen> {
               description: description,
               bullets: bullets,
               durationInfo: duration,
-              accentColor: const Color(0xFFFACC15), // AI Yellow Accent
+              accentColor: const Color(0xFFFACC15),
               customWeeks: customWeeks,
+              injuryArea: injuryArea,
             ),
           ),
         );

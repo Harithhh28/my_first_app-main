@@ -9,6 +9,7 @@ class PlanDetailsScreen extends StatefulWidget {
   final String durationInfo;
   final Color accentColor;
   final List<dynamic>? customWeeks;
+  final String injuryArea; // e.g. "Knee", "Ankle", "Shoulder"
 
   const PlanDetailsScreen({
     super.key,
@@ -18,6 +19,7 @@ class PlanDetailsScreen extends StatefulWidget {
     required this.durationInfo,
     required this.accentColor,
     this.customWeeks,
+    this.injuryArea = '',
   });
 
   @override
@@ -489,69 +491,124 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen> {
                           ),
                           const SizedBox(height: 16),
                           ...week["days"].map<Widget>((day) {
-                            bool isDone = day["completed"] == true;
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(8),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => WorkoutScreen(
-                                      workoutName: day["details"] ??
-                                          day["day"] ??
-                                          "Rehab Exercise",
-                                      injuryCategory: widget.title
-                                              .contains("Shoulder")
-                                          ? "Shoulder"
-                                          : "Knee",
-                                      prescribedReps: 10,
-                                      planTitle: widget.title,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8.0, vertical: 12.0),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                      isDone
-                                          ? Icons.check_circle
-                                          : Icons.circle_outlined,
-                                      color: isDone
-                                          ? widget.accentColor
-                                          : Colors.grey[600],
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            day["day"],
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            day["details"],
-                                            style: TextStyle(
-                                              color: Colors.grey[400],
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                            final bool isDone = day["completed"] == true;
+                            // Support both new structure (exercises list) and old (details string)
+                            final List<dynamic> exercises = day["exercises"] as List<dynamic>? ?? [];
+                            final String focus = day["focus"] as String? ?? "";
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF111827),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isDone
+                                      ? widget.accentColor.withValues(alpha: 0.5)
+                                      : const Color(0xFF1E293B),
                                 ),
+                              ),
+                              child: ExpansionTile(
+                                tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                leading: Icon(
+                                  isDone ? Icons.check_circle : Icons.circle_outlined,
+                                  color: isDone ? widget.accentColor : Colors.grey[600],
+                                  size: 22,
+                                ),
+                                title: Text(
+                                  day["day"] ?? "Day",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: focus.isNotEmpty
+                                    ? Text(
+                                        focus,
+                                        style: TextStyle(color: widget.accentColor, fontSize: 12),
+                                      )
+                                    : null,
+                                // Show old-style details as fallback
+                                children: exercises.isNotEmpty
+                                    ? exercises.map<Widget>((ex) {
+                                        final String exName  = ex["name"]  as String? ?? "Exercise";
+                                        final int    sets    = (ex["sets"]  as num?)?.toInt() ?? 3;
+                                        final int    reps    = (ex["reps"]  as num?)?.toInt() ?? 10;
+                                        final String notes   = ex["notes"] as String? ?? "";
+
+                                        return ListTile(
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                                          leading: Container(
+                                            width: 40, height: 40,
+                                            decoration: BoxDecoration(
+                                              color: widget.accentColor.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Icon(Icons.fitness_center, color: widget.accentColor, size: 18),
+                                          ),
+                                          title: Text(
+                                            exName,
+                                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                                          ),
+                                          subtitle: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                "$sets sets × $reps reps",
+                                                style: TextStyle(color: widget.accentColor, fontSize: 12, fontWeight: FontWeight.bold),
+                                              ),
+                                              if (notes.isNotEmpty)
+                                                Text(notes, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                                            ],
+                                          ),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.play_circle_fill, color: Color(0xFF4353FF), size: 32),
+                                            onPressed: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => WorkoutScreen(
+                                                    workoutName: exName,
+                                                    injuryCategory: widget.injuryArea.isNotEmpty
+                                                        ? widget.injuryArea
+                                                        : widget.title,
+                                                    prescribedReps: reps,
+                                                    planTitle: widget.title,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        );
+                                      }).toList()
+                                    : [
+                                        // Fallback for old-format plans with 'details' string
+                                        ListTile(
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                                          title: Text(
+                                            day["details"] ?? "",
+                                            style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                                          ),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.play_circle_fill, color: Color(0xFF4353FF), size: 32),
+                                            onPressed: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => WorkoutScreen(
+                                                    workoutName: day["details"] ?? day["day"] ?? "Rehab Exercise",
+                                                    injuryCategory: widget.injuryArea.isNotEmpty
+                                                        ? widget.injuryArea
+                                                        : widget.title,
+                                                    prescribedReps: 10,
+                                                    planTitle: widget.title,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
                               ),
                             );
                           }).toList(),

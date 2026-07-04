@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'database_service.dart';
@@ -15,16 +16,19 @@ class _ProgressScreenState extends State<ProgressScreen> {
   List<Map<String, dynamic>> _history = [];
   double _avgFormScore = 0;
   double _avgPainLevel = 0;
+  StreamSubscription? _workoutsSub;
 
   @override
   void initState() {
     super.initState();
-    _loadProgressHistory();
+    _initWorkoutsListener();
   }
 
-  Future<void> _loadProgressHistory() async {
-    try {
-      final history = await DatabaseService().getWorkoutHistory();
+  void _initWorkoutsListener() {
+    _workoutsSub = DatabaseService().getUserWorkouts().listen((snapshot) {
+      // Sort oldest to newest (up to 10 sessions)
+      final docs = snapshot.docs.take(10).toList().reversed.toList();
+      final history = docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
       if (mounted) {
         setState(() {
           _history = history;
@@ -37,18 +41,27 @@ class _ProgressScreenState extends State<ProgressScreen> {
             }
             _avgFormScore = totalForm / history.length;
             _avgPainLevel = totalPain / history.length;
+          } else {
+            _avgFormScore = 0;
+            _avgPainLevel = 0;
           }
           _isLoadingHistory = false;
         });
       }
-    } catch (e) {
-      debugPrint("Error loading progress history: $e");
+    }, onError: (err) {
+      debugPrint("Error listening to progress history: $err");
       if (mounted) {
         setState(() {
           _isLoadingHistory = false;
         });
       }
-    }
+    });
+  }
+
+  @override
+  void dispose() {
+    _workoutsSub?.cancel();
+    super.dispose();
   }
 
   @override
