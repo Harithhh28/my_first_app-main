@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'workout_selection.dart';
+import 'database_service.dart';
+import 'workout.dart';
 
 class PlanDetailsScreen extends StatefulWidget {
   final String title;
@@ -7,6 +8,7 @@ class PlanDetailsScreen extends StatefulWidget {
   final List<String> bullets;
   final String durationInfo;
   final Color accentColor;
+  final List<dynamic>? customWeeks;
 
   const PlanDetailsScreen({
     super.key,
@@ -15,6 +17,7 @@ class PlanDetailsScreen extends StatefulWidget {
     required this.bullets,
     required this.durationInfo,
     required this.accentColor,
+    this.customWeeks,
   });
 
   @override
@@ -53,85 +56,234 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen> {
     super.dispose();
   }
 
-  // 🏥 Hardcoded 1-Month Dummy Data for FYP Presentation
-  List<Map<String, dynamic>> _generateOneMonthPlan() {
-    return [
-      {
-        "week": "WEEK 1",
-        "days": [
-          {
-            "day": "Day 1 - 15 Min",
-            "details": "10x Light Reps + 30s Mobility Hold (3 Sets)",
-            "completed": false,
-          },
-          {
-            "day": "Day 2 - 20 Min",
-            "details": "12x Stabilizer Work + AI Form Check (4 Sets)",
-            "completed": false,
-          },
-          {
-            "day": "Day 3 - 20 Min",
-            "details": "Active Recovery Stretch & Mobility (2 Sets)",
-            "completed": false,
-          },
-        ],
-      },
-      {
-        "week": "WEEK 2",
-        "days": [
-          {
-            "day": "Day 1 - 25 Min",
-            "details": "10x Resistance Band + Iso Holds (4 Sets)",
-            "completed": false,
-          },
-          {
-            "day": "Day 2 - 25 Min",
-            "details": "15x Volume Build & Asymmetry Check (4 Sets)",
-            "completed": false,
-          },
-          {
-            "day": "Day 3 - 20 Min",
-            "details": "Joint Decompression Stretches (3 Sets)",
-            "completed": false,
-          },
-        ],
-      },
-      {
-        "week": "WEEK 3",
-        "days": [
-          {
-            "day": "Day 1 - 30 Min",
-            "details": "Intermediate Load Integration (5 Sets)",
-            "completed": false,
-          },
-          {
-            "day": "Day 2 - 30 Min",
-            "details": "Neuromuscular Control Protocol (5 Sets)",
-            "completed": false,
-          },
-        ],
-      },
-      {
-        "week": "WEEK 4",
-        "days": [
-          {
-            "day": "Day 1 - 35 Min",
-            "details": "Full Range of Motion Stress Test (5 Sets)",
-            "completed": false,
-          },
-          {
-            "day": "Day 2 - 35 Min",
-            "details": "Pre-Discharge Strength Assessment (5 Sets)",
-            "completed": false,
-          },
-        ],
-      },
-    ];
+  // 🏥 Hardcoded Static Syllabi for Rehab Plans
+  List<Map<String, dynamic>> _generateStaticSyllabus(String title) {
+    if (title.contains("Knee")) {
+      return [
+        {
+          "week": "WEEK 1",
+          "days": [
+            {
+              "day": "Day 1 - 15 Min",
+              "details": "Passive extension & quad sets (3 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 20 Min",
+              "details": "Straight leg raises & heel slides (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 3 - 20 Min",
+              "details": "Patella mobilization & gentle hamstring stretch",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 2",
+          "days": [
+            {
+              "day": "Day 1 - 25 Min",
+              "details": "Weighted quad extension + mini squats (3 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 25 Min",
+              "details": "Closed kinetic chain exercises & balance holds (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 3 - 20 Min",
+              "details": "Active range of motion knee bends",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 3",
+          "days": [
+            {
+              "day": "Day 1 - 30 Min",
+              "details": "Proprioceptive exercises & step downs (5 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 30 Min",
+              "details": "Side-lying leg lifts & terminal knee extensions",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 4",
+          "days": [
+            {
+              "day": "Day 1 - 35 Min",
+              "details": "Eccentric single leg squats (5 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 35 Min",
+              "details": "Functional agility drills & return-to-load assessment",
+              "completed": false,
+            },
+          ],
+        },
+      ];
+    } else if (title.contains("Mix")) {
+      return [
+        {
+          "week": "WEEK 1",
+          "days": [
+            {
+              "day": "Day 1 - 20 Min",
+              "details": "Core activation & joint alignment exercises",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 25 Min",
+              "details": "Alternating upper/lower kinetic chain mobilizations",
+              "completed": false,
+            },
+            {
+              "day": "Day 3 - 20 Min",
+              "details": "Low intensity steady state cardio or general walk",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 2",
+          "days": [
+            {
+              "day": "Day 1 - 25 Min",
+              "details": "Rotator cuff activation + balance stabilization (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 25 Min",
+              "details": "Glute bridge holds & shoulder wall slides (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 3 - 20 Min",
+              "details": "Total body active stretching sequence",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 3",
+          "days": [
+            {
+              "day": "Day 1 - 30 Min",
+              "details": "Dynamic movement control drills (5 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 30 Min",
+              "details": "Plank taps & single leg balance reaches",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 4",
+          "days": [
+            {
+              "day": "Day 1 - 35 Min",
+              "details": "Full body conditioning & structural strength",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 35 Min",
+              "details": "Progressive multi-planar loading protocol",
+              "completed": false,
+            },
+          ],
+        },
+      ];
+    } else {
+      // Default: Shoulder Recovery
+      return [
+        {
+          "week": "WEEK 1",
+          "days": [
+            {
+              "day": "Day 1 - 15 Min",
+              "details": "10x Light Reps + 30s Mobility Hold (3 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 20 Min",
+              "details": "12x Stabilizer Work + AI Form Check (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 3 - 20 Min",
+              "details": "Active Recovery Stretch & Mobility (2 Sets)",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 2",
+          "days": [
+            {
+              "day": "Day 1 - 25 Min",
+              "details": "10x Resistance Band + Iso Holds (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 25 Min",
+              "details": "15x Volume Build & Asymmetry Check (4 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 3 - 20 Min",
+              "details": "Joint Decompression Stretches (3 Sets)",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 3",
+          "days": [
+            {
+              "day": "Day 1 - 30 Min",
+              "details": "Intermediate Load Integration (5 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 30 Min",
+              "details": "Neuromuscular Control Protocol (5 Sets)",
+              "completed": false,
+            },
+          ],
+        },
+        {
+          "week": "WEEK 4",
+          "days": [
+            {
+              "day": "Day 1 - 35 Min",
+              "details": "Full Range of Motion Stress Test (5 Sets)",
+              "completed": false,
+            },
+            {
+              "day": "Day 2 - 35 Min",
+              "details": "Pre-Discharge Strength Assessment (5 Sets)",
+              "completed": false,
+            },
+          ],
+        },
+      ];
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final planData = _generateOneMonthPlan();
+    final planData = widget.customWeeks ?? _generateStaticSyllabus(widget.title);
 
     return Scaffold(
       backgroundColor: const Color(0xFF090C14),
@@ -217,11 +369,13 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen> {
                                 size: 18,
                               ),
                               const SizedBox(width: 8),
-                              Text(
-                                b,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
+                              Expanded(
+                                child: Text(
+                                  b,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ],
@@ -245,20 +399,28 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen> {
                           );
 
                           final commitButton = ElevatedButton.icon(
-                            onPressed: () {
+                            onPressed: () async {
+                              // Save the plan to history database
+                              await DatabaseService().saveCustomPlan(
+                                title: widget.title,
+                                description: widget.description,
+                                bullets: widget.bullets,
+                                durationInfo: widget.durationInfo,
+                                customWeeks: widget.customWeeks,
+                              );
+
+                              // Mark it as active in Firestore
+                              await DatabaseService().setActivePlan(widget.title);
+
+                              if (!context.mounted) return;
+
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text("${widget.title} Activated!"),
                                   backgroundColor: widget.accentColor,
                                 ),
                               );
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      const WorkoutSelectionScreen(),
-                                ),
-                              );
+                              Navigator.pop(context);
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: widget.accentColor,
@@ -327,47 +489,69 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen> {
                           ),
                           const SizedBox(height: 16),
                           ...week["days"].map<Widget>((day) {
-                            bool isDone = day["completed"];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 24.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                    isDone
-                                        ? Icons.check_circle
-                                        : Icons.circle_outlined,
-                                    color: isDone
-                                        ? widget.accentColor
-                                        : Colors.grey[600],
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          day["day"],
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          day["details"],
-                                          style: TextStyle(
-                                            color: Colors.grey[400],
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
+                            bool isDone = day["completed"] == true;
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => WorkoutScreen(
+                                      workoutName: day["details"] ??
+                                          day["day"] ??
+                                          "Rehab Exercise",
+                                      injuryCategory: widget.title
+                                              .contains("Shoulder")
+                                          ? "Shoulder"
+                                          : "Knee",
+                                      prescribedReps: 10,
+                                      planTitle: widget.title,
                                     ),
                                   ),
-                                ],
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8.0, vertical: 12.0),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      isDone
+                                          ? Icons.check_circle
+                                          : Icons.circle_outlined,
+                                      color: isDone
+                                          ? widget.accentColor
+                                          : Colors.grey[600],
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            day["day"],
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            day["details"],
+                                            style: TextStyle(
+                                              color: Colors.grey[400],
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             );
                           }).toList(),

@@ -14,6 +14,7 @@ class WorkoutScreen extends StatefulWidget {
   final int prescribedReps;
   final String currentLevel;
   final String adaptationTier;
+  final String? planTitle;
 
   const WorkoutScreen({
     super.key,
@@ -22,6 +23,7 @@ class WorkoutScreen extends StatefulWidget {
     this.prescribedReps = 10,
     this.currentLevel = "Volume Initial",
     this.adaptationTier = "Baseline",
+    this.planTitle,
   });
 
   @override
@@ -338,13 +340,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text(
-          widget.workoutName,
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.workoutName,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            if (widget.planTitle != null)
+              Text(
+                "Active Plan: ${widget.planTitle}",
+                style: const TextStyle(color: Color(0xFFFACC15), fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+          ],
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       extendBodyBehindAppBar: true,
       body: _isCameraInitialized

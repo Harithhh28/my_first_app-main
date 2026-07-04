@@ -113,8 +113,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
             "My patient just finished a ${widget.workoutName} protocol for their ${widget.injuryCategory}. "
             "They completed ${widget.reps} reps with a machine-vision form score of ${widget.formScore}%. "
             "They reported a pain level of ${_painLevel.toInt()} out of 10. "
+            "The patient's ultimate clinical goal is to 'Return to Running'. " // 👈 NEW PERSONALIZATION LAYER
             "The system engine classified their next session as: $_adaptationTier. "
-            "Please give them a brief, encouraging summary and a quick recovery tip based on these specific numbers.";
+            "Please give them a brief, encouraging summary and a quick recovery tip based on these specific numbers and their ultimate goal.";
       }
 
       final response = await model.generateContent([Content.text(prompt)]);

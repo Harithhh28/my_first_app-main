@@ -233,5 +233,50 @@ class DatabaseService {
   Stream<QuerySnapshot> getUserPrescriptions() {
     return _db.collection('users').doc(_uid).collection('prescriptions').snapshots();
   }
+
+  // ✅ SAVE A CUSTOM PLAN (When the user commits to it)
+  Future<void> saveCustomPlan({
+    required String title,
+    required String description,
+    required List<String> bullets,
+    required String durationInfo,
+    List<dynamic>? customWeeks,
+  }) async {
+    try {
+      await _db.collection('users').doc(_uid).collection('custom_plans').add({
+        'title': title,
+        'description': description,
+        'bullets': bullets,
+        'durationInfo': durationInfo,
+        'customWeeks': customWeeks ?? [],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      print("Custom plan saved successfully!");
+    } catch (e) {
+      print("Error saving custom plan: $e");
+    }
+  }
+
+  // 📡 FETCH CUSTOM PLANS REACTIVELY
+  Stream<QuerySnapshot> getCustomPlans() {
+    return _db
+        .collection('users')
+        .doc(_uid)
+        .collection('custom_plans')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  // ✅ SET ACTIVE PLAN
+  Future<void> setActivePlan(String planTitle) async {
+    try {
+      await _db.collection('users').doc(_uid).set({
+        'activePlanTitle': planTitle,
+      }, SetOptions(merge: true));
+      print("Active plan set to $planTitle");
+    } catch (e) {
+      print("Error setting active plan: $e");
+    }
+  }
 }
 

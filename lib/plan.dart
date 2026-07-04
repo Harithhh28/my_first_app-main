@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'plan_details.dart';
+import 'database_service.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
@@ -18,22 +20,26 @@ class _PlanScreenState extends State<PlanScreen> {
   String _activePlanTitle = "Shoulder Recovery";
 
   // 💬 GEMINI CHATBOT VARIABLES
-  late final GenerativeModel _model;
-  late final ChatSession _chat;
+  late GenerativeModel _model;
+  late ChatSession _chat;
   bool _isChatInitialized = false;
+  String? _chatPlanTitle;
 
   @override
   void initState() {
     super.initState();
-    _initGemini();
+    _chatPlanTitle = _activePlanTitle;
+    _initGemini(_activePlanTitle);
   }
 
   // 🧠 INITIALIZE THE AI COACH
-  void _initGemini() {
+  void _initGemini(String planTitle) {
     _model = FirebaseAI.googleAI().generativeModel(
       model: 'gemini-3.1-flash-lite',
       systemInstruction: Content.text(
         "You are 'Rehab Ai Coach', a clinical physical therapist AI assistant. "
+        "The user is currently following the physical therapy plan: '$planTitle'. "
+        "Provide guidance, answer questions, suggest exercise modifications or regressions/progressions specifically tailored for this recovery plan. "
         "Keep your answers concise, empathetic, and medically safe. "
         "Always remind users to stop if they feel sharp pain. Do not diagnose severe conditions.",
       ),
@@ -79,11 +85,25 @@ class _PlanScreenState extends State<PlanScreen> {
 
   // 💬 CHATBOT: Bottom Sheet Overlay
   void _openCoachChat() {
-    if (_chatMessages.isEmpty) {
+    if (_chatPlanTitle != _activePlanTitle || _chatMessages.isEmpty) {
+      _chatPlanTitle = _activePlanTitle;
+      _chatMessages.clear();
+      _initGemini(_activePlanTitle);
+      
+      String greetingText;
+      if (_activePlanTitle == "Shoulder Recovery") {
+        greetingText = "Hi! I'm your Rehab Ai Coach. I see you're working on the Shoulder Recovery plan today. How can I help you with your rotator cuff, shoulder stability, or range of motion exercises?";
+      } else if (_activePlanTitle == "Knee Recovery") {
+        greetingText = "Hi! I'm your Rehab Ai Coach. I see you're working on the Knee Recovery plan today. How can I help you with knee stability, patellar tracking, or alignment?";
+      } else if (_activePlanTitle == "The Recovery Mix") {
+        greetingText = "Hi! I'm your Rehab Ai Coach. I see you're working on The Recovery Mix today. How can I help you with your full body kinetic chain or switching exercises?";
+      } else {
+        greetingText = "Hi! I'm your Rehab Ai Coach. I see you are on the $_activePlanTitle. How can I support your recovery and exercise form today?";
+      }
+      
       _chatMessages.add({
         "role": "coach",
-        "text":
-            "Hi! I'm your Rehab Ai Coach. Do you have questions about today's protocols or need alternative exercises?",
+        "text": greetingText,
       });
     }
 
@@ -302,68 +322,140 @@ class _PlanScreenState extends State<PlanScreen> {
         ),
       ),
 
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        children: [
-          // 1️⃣ SHOULDER RECOVERY
-          _buildPlanCard(
-            title: "Shoulder Recovery",
-            description:
-                "Restore range of motion and eliminate stiffness in the rotator cuff and deltoid groups.",
-            bullets: [
-              "AI Motion Guidance",
-              "Rotator Cuff Stability",
-              "Pain Level Monitoring",
-            ],
-            durationInfo: "6 WEEKS | 15-20 min",
-            accentColor: const Color(0xFFFACC15), // Yellow Accent
-            bgGradientColors: [
-              const Color(0xFF131A2E),
-              const Color(0xFF1E294B),
-            ],
-          ),
-          const SizedBox(height: 16),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: DatabaseService().getUserProfile(),
+        builder: (context, profileSnapshot) {
+          String activePlanTitle = "Shoulder Recovery"; // Default fallback
+          if (profileSnapshot.hasData && profileSnapshot.data!.exists) {
+            final data = profileSnapshot.data!.data() as Map<String, dynamic>?;
+            if (data != null && data.containsKey('activePlanTitle')) {
+              activePlanTitle = data['activePlanTitle'] ?? "Shoulder Recovery";
+              _activePlanTitle = activePlanTitle;
+            }
+          }
 
-          // 2️⃣ KNEE RECOVERY
-          _buildPlanCard(
-            title: "Knee Recovery",
-            description:
-                "Rebuild structural alignment following ACL/MCL tweaks, meniscus tracking issues, or general wear.",
-            bullets: [
-              "Symmetry Tracking",
-              "Dynamic Load Progression",
-              "Patella Protection",
-            ],
-            durationInfo: "8 WEEKS | 20-30 min",
-            accentColor: const Color(0xFF38BDF8), // Light Blue Accent
-            bgGradientColors: [
-              const Color(0xFF11222E),
-              const Color(0xFF0F354A),
-            ],
-          ),
-          const SizedBox(height: 16),
+          return StreamBuilder<QuerySnapshot>(
+            stream: DatabaseService().getCustomPlans(),
+            builder: (context, snapshot) {
+              List<Widget> listItems = [
+                // 1️⃣ SHOULDER RECOVERY
+                _buildPlanCard(
+                  title: "Shoulder Recovery",
+                  description:
+                      "Restore range of motion and eliminate stiffness in the rotator cuff and deltoid groups.",
+                  bullets: [
+                    "AI Motion Guidance",
+                    "Rotator Cuff Stability",
+                    "Pain Level Monitoring",
+                  ],
+                  durationInfo: "6 WEEKS | 15-20 min",
+                  accentColor: const Color(0xFFFACC15), // Yellow Accent
+                  bgGradientColors: [
+                    const Color(0xFF131A2E),
+                    const Color(0xFF1E294B),
+                  ],
+                  activePlanTitle: activePlanTitle,
+                ),
+                const SizedBox(height: 16),
 
-          // 3️⃣ MIX RECOVERY PLAN
-          _buildPlanCard(
-            title: "The Recovery Mix",
-            description:
-                "A comprehensive hybrid protocol shifting between kinetic upper body tracking and lower body stability.",
-            bullets: [
-              "Full Body Kinetic Chain",
-              "Intelligent AI Switching",
-              "Dual Core Tracking",
-            ],
-            durationInfo: "10 WEEKS | 25-35 min",
-            accentColor: const Color(0xFF4ADE80), // Vibrant Green Accent
-            bgGradientColors: [
-              const Color(0xFF14241C),
-              const Color(0xFF153D22),
-            ],
-          ),
-          const SizedBox(
-            height: 120,
-          ), // Bottom breathing room for the FAB button
-        ],
+                // 2️⃣ KNEE RECOVERY
+                _buildPlanCard(
+                  title: "Knee Recovery",
+                  description:
+                      "Rebuild structural alignment following ACL/MCL tweaks, meniscus tracking issues, or general wear.",
+                  bullets: [
+                    "Symmetry Tracking",
+                    "Dynamic Load Progression",
+                    "Patella Protection",
+                  ],
+                  durationInfo: "8 WEEKS | 20-30 min",
+                  accentColor: const Color(0xFF38BDF8), // Light Blue Accent
+                  bgGradientColors: [
+                    const Color(0xFF11222E),
+                    const Color(0xFF0F354A),
+                  ],
+                  activePlanTitle: activePlanTitle,
+                ),
+                const SizedBox(height: 16),
+
+                // 3️⃣ MIX RECOVERY PLAN
+                _buildPlanCard(
+                  title: "The Recovery Mix",
+                  description:
+                      "A comprehensive hybrid protocol shifting between kinetic upper body tracking and lower body stability.",
+                  bullets: [
+                    "Full Body Kinetic Chain",
+                    "Intelligent AI Switching",
+                    "Dual Core Tracking",
+                  ],
+                  durationInfo: "10 WEEKS | 25-35 min",
+                  accentColor: const Color(0xFF4ADE80), // Vibrant Green Accent
+                  bgGradientColors: [
+                    const Color(0xFF14241C),
+                    const Color(0xFF153D22),
+                  ],
+                  activePlanTitle: activePlanTitle,
+                ),
+              ];
+
+              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                listItems.add(const SizedBox(height: 32));
+                listItems.add(
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Text(
+                      "Committed Custom Plans",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                );
+                listItems.add(const SizedBox(height: 16));
+
+                for (var doc in snapshot.data!.docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final title = data['title'] ?? "Custom Protocol";
+                  final description = data['description'] ?? "";
+                  final bulletsDynamic = data['bullets'] ?? [];
+                  final bullets = List<String>.from(bulletsDynamic.map((e) => e.toString()));
+                  final durationInfo = data['durationInfo'] ?? "";
+                  final customWeeks = data['customWeeks'] as List<dynamic>?;
+
+                  listItems.add(
+                    _buildPlanCard(
+                      title: title,
+                      description: description,
+                      bullets: bullets,
+                      durationInfo: durationInfo,
+                      accentColor: const Color(0xFFFACC15), // AI Yellow Accent
+                      bgGradientColors: [
+                        const Color(0xFF2A210F), // Yellow-ish dark gradient
+                        const Color(0xFF3B2F10),
+                      ],
+                      activePlanTitle: activePlanTitle,
+                      customWeeks: customWeeks,
+                    ),
+                  );
+                  listItems.add(const SizedBox(height: 16));
+                }
+              }
+
+              listItems.add(
+                const SizedBox(
+                  height: 120,
+                ), // Bottom breathing room for the FAB button
+              );
+
+              return ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                children: listItems,
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -376,14 +468,16 @@ class _PlanScreenState extends State<PlanScreen> {
     required String durationInfo,
     required Color accentColor,
     required List<Color> bgGradientColors,
+    required String activePlanTitle,
+    List<dynamic>? customWeeks,
   }) {
-    bool isActive = _activePlanTitle == title;
+    bool isActive = activePlanTitle == title;
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _activePlanTitle = title; // Mark it as active
-        });
+      onTap: () async {
+        await DatabaseService().setActivePlan(title);
+
+        if (!mounted) return;
 
         // Navigate to the beautiful Week-by-Week Details View!
         Navigator.push(
@@ -395,6 +489,7 @@ class _PlanScreenState extends State<PlanScreen> {
               bullets: bullets,
               durationInfo: durationInfo,
               accentColor: accentColor,
+              customWeeks: customWeeks,
             ),
           ),
         );
@@ -497,12 +592,14 @@ class _PlanScreenState extends State<PlanScreen> {
                   children: [
                     const Icon(Icons.check, color: Colors.white, size: 16),
                     const SizedBox(width: 10),
-                    Text(
-                      bulletText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Text(
+                        bulletText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
