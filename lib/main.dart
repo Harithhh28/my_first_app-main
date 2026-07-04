@@ -4,6 +4,7 @@ import 'progress.dart';
 import 'help.dart';
 import 'home.dart';
 import 'welcome.dart';
+import 'rom_assessment.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'auth_service.dart';
@@ -87,6 +88,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _pages = [
     const HomeScreen(),
     PlanScreen(),
+    const RomAssessmentScreen(), // 📐 ROM Scan
     ProgressScreen(),
     HelpView(), // Placeholder
   ];
@@ -221,6 +223,18 @@ class _MainScreenState extends State<MainScreen> {
               child: Icon(Icons.calendar_month),
             ),
             label: 'Rehab Plan',
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.query_stats_outlined),
+            activeIcon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.query_stats),
+            ),
+            label: 'ROM Scan',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,13 +28,15 @@ class WorkoutScreen extends StatefulWidget {
   });
 
   @override
-  _WorkoutScreenState createState() => _WorkoutScreenState();
+  State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
 class _WorkoutScreenState extends State<WorkoutScreen> {
   CameraController? _controller;
   bool _isCameraInitialized = false;
   bool _isFinished = false;
+  bool _noCameraAvailable = false;
+  Timer? _simulationTimer;
 
   // 👇 1. INITIALIZE THE AI BRAIN
   final PoseDetector _poseDetector = PoseDetector(
@@ -57,7 +60,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   // 🏋️‍♀️ REP TRACKING STATE
   bool _isArmDown = true;
-  final int _totalScore = 0;
   double _repMaxSway = 0.0;
 
   // Helper for camera rotation
@@ -69,23 +71,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   };
 
   // Calculates the angle at the 'middle' joint
-  double _calculateAngle(
-    PoseLandmark first,
-    PoseLandmark middle,
-    PoseLandmark last,
-  ) {
-    double angle =
-        math.atan2(last.y - middle.y, last.x - middle.x) -
-        math.atan2(first.y - middle.y, first.x - middle.x);
-
-    angle = angle * (180.0 / math.pi); // Convert radians to degrees
-
-    if (angle < 0) {
-      angle += 360.0;
-    }
-    if (angle > 180) {
-      angle = 360 - angle;
-    }
+  double _calculateAngle(PoseLandmark first, PoseLandmark middle, PoseLandmark last) {
+    double angle = math.atan2(last.y - middle.y, last.x - middle.x) -
+                   math.atan2(first.y - middle.y, first.x - middle.x);
+    angle = angle * (180.0 / math.pi);
+    if (angle < 0) angle += 360.0;
+    if (angle > 180) angle = 360 - angle;
     return angle;
   }
 
@@ -95,49 +86,98 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     _initializeCamera();
   }
 
-  void _initializeCamera() async {
-    final frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-      orElse: () => cameras.first,
-    );
-
-    _controller = CameraController(
-      frontCamera,
-      ResolutionPreset.low, // Lower resolution is faster for AI
-      enableAudio: false,
-      imageFormatGroup: Platform.isAndroid
-          ? ImageFormatGroup.nv21
-          : ImageFormatGroup.bgra8888,
-    );
-
-    await _controller!.initialize();
-
-    // 👇 2. FEED LIVE FRAMES TO THE AI
-    _controller!.startImageStream((CameraImage image) {
-      if (!_isProcessing && !_isFinished) {
-        _processImage(image, frontCamera);
+  void _startSimulatedWorkout() {
+    _aiStatus = "Simulating movement (No camera detected)...";
+    _simulationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (!mounted || _isFinished) {
+        timer.cancel();
+        return;
       }
-    });
-
-    if (mounted) {
       setState(() {
+        _reps++;
+        _formScore = 90 + (5 * (timer.tick % 3));
+        _aiStatus = "Simulating rep $_reps (Perfect Symmetry)";
+        if (_reps >= widget.prescribedReps) {
+          _aiStatus = "Target reached! Finishing workout...";
+          timer.cancel();
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            _finishWorkout();
+          });
+        }
+      });
+    });
+  }
+
+  void _initializeCamera() async {
+    if (cameras.isEmpty) {
+      setState(() {
+        _noCameraAvailable = true;
         _isCameraInitialized = true;
       });
+      _startSimulatedWorkout();
+      return;
+    }
+
+    try {
+      final frontCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      _controller = CameraController(
+        frontCamera,
+        ResolutionPreset.low,
+        enableAudio: false,
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+      );
+
+      await _controller!.initialize();
+
+      _controller!.startImageStream((CameraImage image) {
+        if (!_isProcessing && !_isFinished) {
+          _processImage(image, frontCamera);
+        }
+      });
+
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint("Camera initialization error: $e");
+      setState(() {
+        _noCameraAvailable = true;
+        _isCameraInitialized = true;
+      });
+      _startSimulatedWorkout();
     }
   }
 
-  // 👇 3. THE AI PROCESSING LOOP
-  // 👇 3. THE AI PROCESSING LOOP (UPDATED FOR SQUATS)
-  Future<void> _processImage(
-    CameraImage image,
-    CameraDescription camera,
-  ) async {
+  // 🧠 Detect which exercise type to track based on the workout name
+  String get _exerciseType {
+    final name = widget.workoutName.toLowerCase();
+    if (name.contains("squat") || name.contains("lunge") || name.contains("leg press")) {
+      return "squat";
+    } else if (name.contains("curl") || name.contains("bicep") || name.contains("elbow")) {
+      return "curl";
+    } else if (name.contains("shoulder") || name.contains("raise") || name.contains("press") || name.contains("overhead")) {
+      return "shoulder";
+    } else if (name.contains("ankle") || name.contains("calf") || name.contains("dorsi")) {
+      return "ankle";
+    } else if (name.contains("leg raise") || name.contains("straight leg") || name.contains("hip")) {
+      return "leg_raise";
+    }
+    // Default: use upper-body (shoulder) tracking as a safe fallback
+    return "general";
+  }
+
+  Future<void> _processImage(CameraImage image, CameraDescription camera) async {
     _isProcessing = true;
     try {
       final inputImage = _inputImageFromCameraImage(image, camera);
       if (inputImage == null) return;
 
-      // 🧠 Ask ML Kit to find human bodies in the frame
       final List<Pose> poses = await _poseDetector.processImage(inputImage);
 
       if (mounted) {
@@ -148,103 +188,16 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
           if (poses.isEmpty) {
             _aiStatus = "Step back into the frame.";
+            return;
+          }
+
+          final pose = poses.first;
+          final type = _exerciseType;
+
+          if (type == "squat" || type == "ankle" || type == "leg_raise") {
+            _trackLowerBody(pose, type);
           } else {
-            final pose = poses.first;
-
-            // 1. GET THE SQUAT JOINTS (Hips, Knees, Ankles)
-            final leftHip = pose.landmarks[PoseLandmarkType.leftHip];
-            final leftKnee = pose.landmarks[PoseLandmarkType.leftKnee];
-            final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
-
-            final rightHip = pose.landmarks[PoseLandmarkType.rightHip];
-            final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
-            final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
-
-            // 2. Make sure the AI can see the lower body
-            if (leftHip != null &&
-                leftKnee != null &&
-                leftAnkle != null &&
-                rightHip != null &&
-                rightKnee != null &&
-                rightAnkle != null) {
-              // 3. Calculate INDEPENDENT squat depths
-              double leftSquatAngle = _calculateAngle(
-                leftHip,
-                leftKnee,
-                leftAnkle,
-              );
-              double rightSquatAngle = _calculateAngle(
-                rightHip,
-                rightKnee,
-                rightAnkle,
-              );
-
-              // The average depth determines if the rep counts
-              double avgSquatAngle = (leftSquatAngle + rightSquatAngle) / 2;
-
-              // 4. Calculate ASYMMETRY (Are they leaning on one leg?)
-              // If the difference in angles is high, they are shifting their weight!
-              double difference = (leftSquatAngle - rightSquatAngle).abs();
-
-              if (difference > _repMaxSway) {
-                _repMaxSway = difference; // Re-using this to track worst lean
-              }
-
-              // 5. SQUAT REP COUNTING LOGIC
-              if (avgSquatAngle > 160) {
-                _isArmDown = true;
-                _aiStatus = "Good, now squat DOWN!";
-                _repMaxSway = 0.0; // Reset lean tracker
-              } else if (avgSquatAngle < 100 && _isArmDown == true) {
-                _reps++;
-                _isArmDown = false;
-
-                // --- ASYMMETRY FORM SCORE ---
-                int repLeftScore = 100;
-                int repRightScore = 100;
-
-                // If they leaned heavily during the rep, punish the lazy leg!
-                if (_repMaxSway > 20) {
-                  // 20+ degree difference is a severe lean
-                  _aiStatus = "Heavy shifting detected! Balance your weight.";
-                  if (leftSquatAngle > rightSquatAngle) {
-                    repLeftScore = 40; // Left leg didn't bend enough
-                  } else {
-                    repRightScore = 40; // Right leg didn't bend enough
-                  }
-                } else if (_repMaxSway > 10) {
-                  _aiStatus = "Slight lean. Keep hips centered.";
-                  if (leftSquatAngle > rightSquatAngle) {
-                    repLeftScore = 75;
-                  } else {
-                    repRightScore = 75;
-                  }
-                } else {
-                  _aiStatus = "Perfect symmetry! UP!";
-                }
-
-                // Add up the totals
-                _totalLeftScore += repLeftScore;
-                _totalRightScore += repRightScore;
-
-                // Calculate final averages
-                _leftKneeFinal = (_totalLeftScore / _reps).round();
-                _rightKneeFinal = (_totalRightScore / _reps).round();
-
-                // Overall score is the average of both legs
-                _formScore = ((_leftKneeFinal + _rightKneeFinal) / 2).round();
-
-                // Check if they finished the prescribed reps!
-                if (_reps >= widget.prescribedReps) {
-                  _aiStatus = "Target reached! Finishing workout...";
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    _finishWorkout();
-                  });
-                }
-              }
-            } else {
-              _aiStatus = "I can't see your hips, knees and ankles!";
-            }
+            _trackUpperBody(pose, type);
           }
         });
       }
@@ -253,14 +206,131 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
+  // 🦵 Lower body tracker: squats, ankle work, leg raises
+  void _trackLowerBody(Pose pose, String type) {
+    final leftHip   = pose.landmarks[PoseLandmarkType.leftHip];
+    final leftKnee  = pose.landmarks[PoseLandmarkType.leftKnee];
+    final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
+    final rightHip   = pose.landmarks[PoseLandmarkType.rightHip];
+    final rightKnee  = pose.landmarks[PoseLandmarkType.rightKnee];
+    final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
+
+    if (leftHip == null || leftKnee == null || leftAnkle == null ||
+        rightHip == null || rightKnee == null || rightAnkle == null) {
+      _aiStatus = "Can't see your legs clearly. Step back.";
+      return;
+    }
+
+    double leftAngle  = _calculateAngle(leftHip, leftKnee, leftAnkle);
+    double rightAngle = _calculateAngle(rightHip, rightKnee, rightAnkle);
+    double avgAngle   = (leftAngle + rightAngle) / 2;
+    double sway       = (leftAngle - rightAngle).abs();
+
+    if (sway > _repMaxSway) { _repMaxSway = sway; }
+
+    // Angle thresholds and coaching text differ per exercise
+    final bool isStanding = avgAngle > 160;
+    final bool isBent     = avgAngle < (type == "ankle" ? 140 : 100);
+    final String downCue  = type == "squat"
+        ? "Now squat DOWN slowly!"
+        : type == "ankle"
+            ? "Now flex your ankle gently."
+            : "Raise your leg upward.";
+    final String upCue    = type == "squat" ? "Drive UP through your heels!" : "Hold, then return slowly.";
+
+    if (isStanding) {
+      _isArmDown = true;
+      _aiStatus  = downCue;
+      _repMaxSway = 0.0;
+    } else if (isBent && _isArmDown) {
+      _reps++;
+      _isArmDown = false;
+      _scoreRep(sway, leftAngle > rightAngle, upCue);
+    }
+  }
+
+  // 💪 Upper body tracker: bicep curls, shoulder raises
+  void _trackUpperBody(Pose pose, String type) {
+    final leftShoulder  = pose.landmarks[PoseLandmarkType.leftShoulder];
+    final leftElbow     = pose.landmarks[PoseLandmarkType.leftElbow];
+    final leftWrist     = pose.landmarks[PoseLandmarkType.leftWrist];
+    final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+    final rightElbow    = pose.landmarks[PoseLandmarkType.rightElbow];
+    final rightWrist    = pose.landmarks[PoseLandmarkType.rightWrist];
+
+    if (leftShoulder == null || leftElbow == null || leftWrist == null ||
+        rightShoulder == null || rightElbow == null || rightWrist == null) {
+      _aiStatus = "Can't see your arms clearly. Face the camera.";
+      return;
+    }
+
+    // For shoulder: shoulder→elbow→hip angle; for curl: shoulder→elbow→wrist angle
+    final leftHip  = pose.landmarks[PoseLandmarkType.leftHip];
+    final rightHip = pose.landmarks[PoseLandmarkType.rightHip];
+
+    double leftAngle;
+    double rightAngle;
+
+    if (type == "shoulder" && leftHip != null && rightHip != null) {
+      leftAngle  = _calculateAngle(leftElbow,  leftShoulder,  leftHip);
+      rightAngle = _calculateAngle(rightElbow, rightShoulder, rightHip);
+    } else {
+      leftAngle  = _calculateAngle(leftShoulder,  leftElbow,  leftWrist);
+      rightAngle = _calculateAngle(rightShoulder, rightElbow, rightWrist);
+    }
+
+    double avgAngle = (leftAngle + rightAngle) / 2;
+    double sway     = (leftAngle - rightAngle).abs();
+    if (sway > _repMaxSway) { _repMaxSway = sway; }
+
+    final bool isDown  = avgAngle < 40;
+    final bool isUp    = avgAngle > 140;
+    final String downCue = type == "shoulder" ? "Lower your arms down." : "Lower the weight down.";
+    final String upCue   = type == "shoulder" ? "Raise both arms — keep them level!" : "Curl UP — squeeze at the top!";
+
+    if (isDown) {
+      _isArmDown  = true;
+      _aiStatus   = upCue;
+      _repMaxSway = 0.0;
+    } else if (isUp && _isArmDown) {
+      _reps++;
+      _isArmDown = false;
+      _scoreRep(sway, leftAngle > rightAngle, downCue);
+    }
+  }
+
+  // 📊 Shared rep scoring logic
+  void _scoreRep(double sway, bool leftHigher, String nextCue) {
+    int repLeftScore  = 100;
+    int repRightScore = 100;
+
+    if (sway > 20) {
+      _aiStatus = "Heavy imbalance! ${leftHigher ? 'Right' : 'Left'} side is lagging.";
+      if (leftHigher) { repRightScore = 40; } else { repLeftScore = 40; }
+    } else if (sway > 10) {
+      _aiStatus = "Slight asymmetry — try to keep both sides even.";
+      if (leftHigher) { repRightScore = 75; } else { repLeftScore = 75; }
+    } else {
+      _aiStatus = "Perfect symmetry! $nextCue";
+    }
+
+    _totalLeftScore  += repLeftScore;
+    _totalRightScore += repRightScore;
+    _leftKneeFinal   = (_totalLeftScore  / _reps).round();
+    _rightKneeFinal  = (_totalRightScore / _reps).round();
+    _formScore       = ((_leftKneeFinal + _rightKneeFinal) / 2).round();
+
+    if (_reps >= widget.prescribedReps) {
+      _aiStatus = "Target reached! Finishing workout...";
+      Future.delayed(const Duration(milliseconds: 500), _finishWorkout);
+    }
+  }
+
   void _finishWorkout() {
     if (_isFinished) return;
     _isFinished = true;
-
-    // 1. Stop the camera to free up memory
     _controller?.stopImageStream();
 
-    // 2. Navigate to Summary Screen
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -279,35 +349,25 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
-  // 👇 4. CONVERT CAMERA FEED FOR ML KIT
-  InputImage? _inputImageFromCameraImage(
-    CameraImage image,
-    CameraDescription camera,
-  ) {
+  InputImage? _inputImageFromCameraImage(CameraImage image, CameraDescription camera) {
     final sensorOrientation = camera.sensorOrientation;
     InputImageRotation? rotation;
     if (Platform.isIOS) {
       rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
     } else if (Platform.isAndroid) {
-      var rotationCompensation =
-          _orientations[_controller!.value.deviceOrientation];
+      var rotationCompensation = _orientations[_controller!.value.deviceOrientation];
       if (rotationCompensation == null) return null;
       if (camera.lensDirection == CameraLensDirection.front) {
         rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
       } else {
-        rotationCompensation =
-            (sensorOrientation - rotationCompensation + 360) % 360;
+        rotationCompensation = (sensorOrientation - rotationCompensation + 360) % 360;
       }
       rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
     }
     if (rotation == null) return null;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
-    if (format == null ||
-        (Platform.isAndroid && format != InputImageFormat.nv21)) {
-      return null;
-    }
-
+    if (format == null || (Platform.isAndroid && format != InputImageFormat.nv21)) return null;
     if (image.planes.isEmpty) return null;
 
     final WriteBuffer allBytes = WriteBuffer();
@@ -329,29 +389,45 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   @override
   void dispose() {
-    _controller?.stopImageStream();
+    _simulationTimer?.cancel();
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      try {
+        _controller?.stopImageStream();
+      } catch (e) {
+        debugPrint("Error stopping image stream: $e");
+      }
+    }
     _controller?.dispose();
-    _poseDetector.close(); // Don't forget to kill the AI to save battery!
+    _poseDetector.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // 👇 Determine the color and title based on the live AI status
+    Color statusColor = const Color(0xFF4353FF); // Default Blue
+    String mainStatusTitle = "Positioning";
+
+    if (_aiStatus.contains("Perfect") || _aiStatus.contains("Good")) {
+      statusColor = const Color(0xFF10B981); // Green for good form
+      mainStatusTitle = "Great Form!";
+    } else if (_aiStatus.contains("shifting") || _aiStatus.contains("lean")) {
+      statusColor = Colors.orangeAccent; // Warning orange for bad form
+      mainStatusTitle = "Correct Your Posture";
+    } else if (_aiStatus.contains("can't see") || _aiStatus.contains("Step back")) {
+      statusColor = Colors.redAccent;
+      mainStatusTitle = "Out of Frame";
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.workoutName,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-            ),
+            Text(widget.workoutName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
             if (widget.planTitle != null)
-              Text(
-                "Active Plan: ${widget.planTitle}",
-                style: const TextStyle(color: Color(0xFFFACC15), fontSize: 12, fontWeight: FontWeight.w500),
-              ),
+              Text("Active Plan: ${widget.planTitle}", style: const TextStyle(color: Color(0xFFFACC15), fontSize: 12, fontWeight: FontWeight.w500)),
           ],
         ),
         backgroundColor: Colors.transparent,
@@ -362,18 +438,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       body: _isCameraInitialized
           ? Stack(
               children: [
-                // 🎥 THE LIVE CAMERA FEED WITH ASPECT RATIO CORRECTION
                 Positioned.fill(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final size = constraints.biggest;
-                      final double cameraAspectRatio = _controller!.value.aspectRatio;
+                      final double cameraAspectRatio = _noCameraAvailable ? 9 / 16 : _controller!.value.aspectRatio;
                       final double portraitAspectRatio = 1 / cameraAspectRatio;
 
                       double scale = size.aspectRatio / portraitAspectRatio;
-                      if (scale < 1.0) {
-                        scale = 1.0 / scale;
-                      }
+                      if (scale < 1.0) scale = 1.0 / scale;
 
                       return ClipRect(
                         child: Transform.scale(
@@ -384,15 +457,25 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  CameraPreview(_controller!),
-                                  if (_poses != null && _imageSize != null && _rotation != null)
-                                    CustomPaint(
-                                      painter: PosePainter(
-                                        _poses!,
-                                        _imageSize!,
-                                        _rotation!,
-                                        _controller!.description.lensDirection,
+                                  if (_noCameraAvailable)
+                                    Container(
+                                      color: const Color(0xFF0F172A),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.videocam_off, color: Colors.blueGrey, size: 64),
+                                          const SizedBox(height: 16),
+                                          const Text("Camera Simulation Mode", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 8),
+                                          Text("Simulating pose tracking for emulators.", style: TextStyle(color: Colors.blueGrey[300], fontSize: 14)),
+                                        ],
                                       ),
+                                    )
+                                  else
+                                    CameraPreview(_controller!),
+                                  if (!_noCameraAvailable && _poses != null && _imageSize != null && _rotation != null)
+                                    CustomPaint(
+                                      painter: PosePainter(_poses!, _imageSize!, _rotation!, _controller!.description.lensDirection),
                                     ),
                                 ],
                               ),
@@ -404,9 +487,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   ),
                 ),
 
-                // 📊 REAL-TIME STATS OVERLAY
                 Positioned(
-                  top: 100, // Places it nicely below the AppBar
+                  top: 100, 
                   left: 20,
                   right: 20,
                   child: Row(
@@ -418,72 +500,52 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   ),
                 ),
 
-                // 🤖 AI STATUS OVERLAY
+                // 🤖 FIXED AI STATUS OVERLAY
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Container(
                     width: double.infinity,
-                    padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.9),
-                          Colors.transparent,
-                        ],
+                        colors: [Colors.black.withValues(alpha: 0.9), Colors.transparent],
                       ),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          _aiStatus.contains("Sees You")
-                              ? Icons.accessibility_new
-                              : Icons.center_focus_strong,
-                          color: _aiStatus.contains("Sees You")
-                              ? Color(0xFF10B981)
-                              : Color(0xFF4353FF),
+                          statusColor == const Color(0xFF10B981) ? Icons.check_circle : Icons.warning_rounded,
+                          color: statusColor,
                           size: 40,
                         ),
-                        SizedBox(height: 12),
+                        const SizedBox(height: 12),
                         Text(
-                          _aiStatus.contains("Sees You")
-                              ? "Perfect, get ready to curl!"
-                              : "Where are you?",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          mainStatusTitle,
+                          style: TextStyle(color: statusColor, fontSize: 20, fontWeight: FontWeight.bold),
                         ),
+                        const SizedBox(height: 4),
                         Text(
-                          _aiStatus,
-                          style: TextStyle(
-                            color: Colors.blueGrey[300],
-                            fontSize: 14,
-                          ),
+                          _aiStatus, // 👈 Now display target AI squat instructions
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
                         ),
-                        SizedBox(height: 24),
-                        // 👇 FINISH WORKOUT BUTTON
+                        const SizedBox(height: 24),
+                        
                         SizedBox(
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
                             onPressed: _finishWorkout,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Color(0xFFE50914), // Bold Red
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              backgroundColor: const Color(0xFFE50914), 
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            child: Text(
+                            child: const Text(
                               "FINISH WORKOUT",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                           ),
                         ),
@@ -493,46 +555,25 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 ),
               ],
             )
-          : Center(child: CircularProgressIndicator(color: Color(0xFF4353FF))),
+          : const Center(child: CircularProgressIndicator(color: Color(0xFF4353FF))),
     );
   }
 
-  // Helper widget to draw the glassy stat boxes over the camera
   Widget _buildStatBox(String title, String value) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 10,
-            spreadRadius: 2,
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, spreadRadius: 2)],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.blueGrey[200],
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, style: TextStyle(color: Colors.blueGrey[200], fontSize: 14, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
         ],
       ),
     );
