@@ -104,8 +104,9 @@ class DatabaseService {
       }
 
       // ── Last 7-day bar chart indicators ─────────────────────────────────
+      // Index 0 = today (leftmost), index 6 = 6 days ago (rightmost)
       final List<bool> weekDays = List.generate(7, (i) {
-        final day = DateTime.now().toLocal().subtract(Duration(days: 6 - i));
+        final day = DateTime.now().toLocal().subtract(Duration(days: i));
         final key = "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
         return workoutDates.contains(key);
       });
