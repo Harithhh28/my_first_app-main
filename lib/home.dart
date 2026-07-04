@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_ai/firebase_ai.dart';
-import 'plan_details.dart'; 
+import 'database_service.dart';
+import 'plan_details.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,9 +14,44 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _injuryController = TextEditingController();
   bool _isGenerating = false;
-  
+
   // This will store the AI generated plan once it finishes
   Map<String, dynamic>? _generatedPlan;
+
+  // 📊 Dynamic stats loaded from Firestore
+  int _streak = 0;
+  int _recoveryPct = 0;
+  List<bool> _weekDays = List.filled(7, false);
+  String _userName = "";
+  bool _statsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final db = DatabaseService();
+      // Load streak + recovery from workout history
+      final stats = await db.getStreakAndRecovery();
+      // Load the user's name from their profile
+      final profileSnap = await db.getUserProfile().first;
+      final profileData = profileSnap.data() as Map<String, dynamic>?;
+      if (mounted) {
+        setState(() {
+          _streak      = stats['streak'] as int? ?? 0;
+          _recoveryPct = stats['recovery'] as int? ?? 0;
+          _weekDays    = List<bool>.from(stats['weekDays'] as List? ?? []);
+          _userName    = profileData?['name'] as String? ?? "";
+          _statsLoaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _statsLoaded = true);
+    }
+  }
 
   // 🧠 THE PROMPT ENGINEERING ENGINE
   Future<void> _generateDynamicPlan() async {
@@ -105,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text("Good Morning 👋", style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)),
                       const SizedBox(height: 4),
-                      const Text("Harith", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                      Text(_userName.isEmpty ? "Welcome!" : _userName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   const CircleAvatar(
@@ -131,7 +167,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text("82%", style: TextStyle(color: Color(0xFF4ADE80), fontSize: 36, fontWeight: FontWeight.bold)),
+                        Text(
+                          _statsLoaded ? "$_recoveryPct%" : "--",
+                          style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 36, fontWeight: FontWeight.bold),
+                        ),
                         Text("Recovery", style: TextStyle(color: Colors.blueGrey[400], fontSize: 12)),
                       ],
                     ),
@@ -141,29 +180,35 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.local_fire_department, color: Colors.orangeAccent, size: 20),
-                            SizedBox(width: 8),
-                            Text("5 Day Streak", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                            const Icon(Icons.local_fire_department, color: Colors.orangeAccent, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              _statsLoaded ? "$_streak Day${_streak == 1 ? '' : 's'} Streak" : "-- Day Streak",
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: List.generate(7, (index) {
-                            bool isCompleted = index < 5;
+                            final bool done = _statsLoaded && index < _weekDays.length && _weekDays[index];
                             return Container(
                               width: 12, height: 32,
                               decoration: BoxDecoration(
-                                color: isCompleted ? Colors.orangeAccent : const Color(0xFF1E293B),
+                                color: done ? Colors.orangeAccent : const Color(0xFF1E293B),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                             );
                           }),
                         ),
                         const SizedBox(height: 16),
-                        Text("Next Milestone: 7 Days", style: TextStyle(color: Colors.blueGrey[400], fontSize: 12)),
+                        Text(
+                          _streak >= 7 ? "🏆 7-Day Milestone reached!" : "Next Milestone: ${7 - _streak} days to go",
+                          style: TextStyle(color: Colors.blueGrey[400], fontSize: 12),
+                        ),
                       ],
                     ),
                   ),

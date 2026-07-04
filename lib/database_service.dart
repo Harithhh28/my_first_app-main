@@ -48,6 +48,79 @@ class DatabaseService {
     }
   }
 
+  // 🔥 CALCULATE STREAK + RECOVERY % from workout history
+  Future<Map<String, dynamic>> getStreakAndRecovery() async {
+    try {
+      // Grab the last 30 workouts (plenty to calculate a week streak)
+      final snapshot = await _db
+          .collection('users')
+          .doc(_uid)
+          .collection('workouts')
+          .orderBy('date', descending: true)
+          .limit(30)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};
+      }
+
+      final docs = snapshot.docs;
+
+      // ── Recovery %: average form score of last 7 sessions ──────────────
+      final recentDocs = docs.take(7).toList();
+      double totalForm = 0;
+      int formCount = 0;
+      for (final doc in recentDocs) {
+        final data = doc.data();
+        if (data['formScore'] != null) {
+          totalForm += (data['formScore'] as num).toDouble();
+          formCount++;
+        }
+      }
+      final int recoveryPct = formCount > 0 ? (totalForm / formCount).round() : 0;
+
+      // ── Streak: count consecutive calendar days with at least 1 workout ─
+      // Build a set of unique workout dates (YYYY-MM-DD strings)
+      final Set<String> workoutDates = {};
+      for (final doc in docs) {
+        final data = doc.data();
+        final ts = data['date'];
+        if (ts != null && ts is Timestamp) {
+          final dt = ts.toDate().toLocal();
+          workoutDates.add("${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}");
+        }
+      }
+
+      int streak = 0;
+      DateTime cursor = DateTime.now().toLocal();
+      while (true) {
+        final key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
+        if (workoutDates.contains(key)) {
+          streak++;
+          cursor = cursor.subtract(const Duration(days: 1));
+        } else {
+          break;
+        }
+      }
+
+      // ── Last 7-day bar chart indicators ─────────────────────────────────
+      final List<bool> weekDays = List.generate(7, (i) {
+        final day = DateTime.now().toLocal().subtract(Duration(days: 6 - i));
+        final key = "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
+        return workoutDates.contains(key);
+      });
+
+      return {
+        'streak': streak,
+        'recovery': recoveryPct,
+        'weekDays': weekDays,
+      };
+    } catch (e) {
+      print("Error calculating streak/recovery: $e");
+      return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};
+    }
+  }
+
   // 👇 Updated to accept painLevel!
   Future<void> saveWorkout(
     String workoutName,

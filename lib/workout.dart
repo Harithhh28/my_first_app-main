@@ -154,21 +154,53 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
-  // 🧠 Detect which exercise type to track based on the workout name
+  // 🧠 Detect which exercise type to track based on workout name + injury category
   String get _exerciseType {
-    final name = widget.workoutName.toLowerCase();
+    final name     = widget.workoutName.toLowerCase();
+    final injury   = widget.injuryCategory.toLowerCase();
+
+    // --- Explicit exercise name matches (highest priority) ---
     if (name.contains("squat") || name.contains("lunge") || name.contains("leg press")) {
       return "squat";
-    } else if (name.contains("curl") || name.contains("bicep") || name.contains("elbow")) {
+    }
+    if (name.contains("curl") || name.contains("bicep") || name.contains("elbow")) {
       return "curl";
-    } else if (name.contains("shoulder") || name.contains("raise") || name.contains("press") || name.contains("overhead")) {
+    }
+    if (name.contains("shoulder") || name.contains("overhead")) {
       return "shoulder";
-    } else if (name.contains("ankle") || name.contains("calf") || name.contains("dorsi")) {
+    }
+    if (name.contains("ankle") || name.contains("calf") || name.contains("dorsi")) {
       return "ankle";
-    } else if (name.contains("leg raise") || name.contains("straight leg") || name.contains("hip")) {
+    }
+    if (name.contains("leg raise") || name.contains("straight leg") || name.contains("hip")) {
       return "leg_raise";
     }
-    // Default: use upper-body (shoulder) tracking as a safe fallback
+    if (name.contains("raise") || name.contains("press")) {
+      // "raise" could be leg raise or shoulder raise — let injury decide
+      if (injury.contains("knee") || injury.contains("ankle") || injury.contains("leg") || injury.contains("hip")) {
+        return "leg_raise";
+      }
+      return "shoulder";
+    }
+
+    // --- Fallback: use injury category to pick the right body region ---
+    if (injury.contains("knee") || injury.contains("leg") || injury.contains("quad") || injury.contains("hamstring")) {
+      return "squat";
+    }
+    if (injury.contains("ankle") || injury.contains("calf") || injury.contains("foot")) {
+      return "ankle";
+    }
+    if (injury.contains("hip") || injury.contains("glute")) {
+      return "leg_raise";
+    }
+    if (injury.contains("shoulder") || injury.contains("rotator")) {
+      return "shoulder";
+    }
+    if (injury.contains("elbow") || injury.contains("bicep") || injury.contains("wrist") || injury.contains("arm")) {
+      return "curl";
+    }
+
+    // Last resort: upper body general
     return "general";
   }
 
