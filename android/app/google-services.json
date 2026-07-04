@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "937726428403",
+    "project_id": "rehab-3b9a9",
+    "storage_bucket": "rehab-3b9a9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:937726428403:android:fae5f541cdfc6b53e9a386",
+        "android_client_info": {
+          "package_name": "com.example.my_first_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "937726428403-evfe1ou3uat2als79mmk37ph4bciveuu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.my_first_app",
+            "certificate_hash": "9d8c6fe8fa17684a405e3bd92c408dbffcb81948"
+          }
+        },
+        {
+          "client_id": "937726428403-5hvhf5a5r3n6ta227g1nqf6lr09rpjdf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3TFDbxHv067BAkAQlkaKbRRRyrTyesFs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "937726428403-5hvhf5a5r3n6ta227g1nqf6lr09rpjdf.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "937726428403-2fupj11fmnrafh4vcat8sg6jqvihi035.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.myFirstApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
