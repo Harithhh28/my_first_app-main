@@ -10,6 +10,7 @@ class PlanDetailsScreen extends StatefulWidget {
   final Color accentColor;
   final List<dynamic>? customWeeks;
   final String injuryArea; // e.g. "Knee", "Ankle", "Shoulder"
+  final bool showCommitButton;
 
   const PlanDetailsScreen({
     super.key,
@@ -20,6 +21,7 @@ class PlanDetailsScreen extends StatefulWidget {
     required this.accentColor,
     this.customWeeks,
     this.injuryArea = '',
+    this.showCommitButton = false,
   });
 
   @override
@@ -399,6 +401,23 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen> {
                               fontSize: 12,
                             ),
                           );
+
+                          if (!widget.showCommitButton) {
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                durationText,
+                                const Text(
+                                  "ACTIVE PROTOCOL",
+                                  style: TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
 
                           final commitButton = ElevatedButton.icon(
                             onPressed: () async {

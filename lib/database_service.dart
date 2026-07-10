@@ -48,10 +48,10 @@ class DatabaseService {
     }
   }
 
-  // 🔥 CALCULATE STREAK + RECOVERY % from list of workout data
+  // 📊 CALCULATE RECOVERY % & WEEKLY ACTIVITY from list of workout data
   Map<String, dynamic> calculateStreakAndRecoveryFromList(List<Map<String, dynamic>> workouts) {
     if (workouts.isEmpty) {
-      return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};
+      return {'recovery': 0, 'weekDays': List.filled(7, false)};
     }
 
     // ── Recovery %: average form score of last 7 sessions ──────────────
@@ -66,62 +66,59 @@ class DatabaseService {
     }
     final int recoveryPct = formCount > 0 ? (totalForm / formCount).round() : 0;
 
-    // ── Streak: count consecutive calendar days with at least 1 workout ─
-    // Build a set of unique workout dates (YYYY-MM-DD strings)
-    final Set<String> workoutDates = {};
+    // ── Weekly Activity: check workouts for the last 7 calendar days ─────
+    // Build a set of unique workout dates (normalized to local midnight)
+    final Set<DateTime> workoutDates = {};
+    print("DEBUG: calculateStreakAndRecoveryFromList - received ${workouts.length} workouts");
     for (final data in workouts) {
       final ts = data['date'];
       DateTime? dt;
       if (ts != null && ts is Timestamp) {
         dt = ts.toDate().toLocal();
+        print("DEBUG:   Found Timestamp date: raw=${ts.runtimeType}($ts) -> local=$dt");
+      } else if (ts is String) {
+        dt = DateTime.tryParse(ts)?.toLocal();
+        print("DEBUG:   Found String date: raw=$ts -> local=$dt");
+      } else if (ts is int) {
+        dt = DateTime.fromMillisecondsSinceEpoch(ts).toLocal();
+        print("DEBUG:   Found int date: raw=$ts -> local=$dt");
       } else if (ts == null) {
         // Fallback for pending writes
         dt = DateTime.now().toLocal();
+        print("DEBUG:   Found null date (pending write) -> fallback local=$dt");
       }
       if (dt != null) {
-        workoutDates.add("${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}");
+        final normalized = DateTime(dt.year, dt.month, dt.day);
+        workoutDates.add(normalized);
+        print("DEBUG:     Added normalized date: $normalized");
       }
     }
 
-    int streak = 0;
     final now = DateTime.now().toLocal();
-    final todayKey = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-
-    // If no workout yet today, start counting from yesterday
-    // (so the streak isn't killed just because you haven't trained yet today)
-    DateTime cursor = workoutDates.contains(todayKey)
-        ? now
-        : now.subtract(const Duration(days: 1));
-
-    while (true) {
-      final key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
-      if (workoutDates.contains(key)) {
-        streak++;
-        cursor = cursor.subtract(const Duration(days: 1));
-      } else {
-        break;
-      }
-    }
+    final today = DateTime(now.year, now.month, now.day);
+    print("DEBUG: today is $today");
 
     // ── Last 7-day bar chart indicators ─────────────────────────────────
     // Index 0 = 6 days ago (leftmost), index 6 = today (rightmost)
     final List<bool> weekDays = List.generate(7, (i) {
-      final day = DateTime.now().toLocal().subtract(Duration(days: 6 - i));
-      final key = "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
-      return workoutDates.contains(key);
+      final day = DateTime(today.year, today.month, today.day - (6 - i));
+      final contains = workoutDates.contains(day);
+      print("DEBUG:   weekDay[$i] (day=$day) -> $contains");
+      return contains;
     });
 
+    print("DEBUG: calculateStreakAndRecoveryFromList - weekDays = $weekDays");
+
     return {
-      'streak': streak,
       'recovery': recoveryPct,
       'weekDays': weekDays,
     };
   }
 
-  // 🔥 CALCULATE STREAK + RECOVERY % from workout history
+  // 📊 CALCULATE RECOVERY % & WEEKLY ACTIVITY from workout history
   Future<Map<String, dynamic>> getStreakAndRecovery() async {
     try {
-      // Grab the last 30 workouts (plenty to calculate a week streak)
+      // Grab the last 30 workouts (plenty to calculate weekly activity)
       final snapshot = await _db
           .collection('users')
           .doc(_uid)
@@ -133,8 +130,8 @@ class DatabaseService {
       final workouts = snapshot.docs.map((doc) => doc.data()).toList();
       return calculateStreakAndRecoveryFromList(workouts);
     } catch (e) {
-      print("Error calculating streak/recovery: $e");
-      return {'streak': 0, 'recovery': 0, 'weekDays': List.filled(7, false)};
+      print("Error calculating recovery/activity: $e");
+      return {'recovery': 0, 'weekDays': List.filled(7, false)};
     }
   }
 
@@ -333,7 +330,12 @@ class DatabaseService {
     List<dynamic>? customWeeks,
   }) async {
     try {
-      await _db.collection('users').doc(_uid).collection('custom_plans').add({
+      await _db
+          .collection('users')
+          .doc(_uid)
+          .collection('custom_plans')
+          .doc(title)
+          .set({
         'title': title,
         'description': description,
         'bullets': bullets,
@@ -366,6 +368,21 @@ class DatabaseService {
       print("Active plan set to $planTitle");
     } catch (e) {
       print("Error setting active plan: $e");
+    }
+  }
+
+  // ✅ DELETE A CUSTOM PLAN
+  Future<void> deleteCustomPlan(String title) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(_uid)
+          .collection('custom_plans')
+          .doc(title)
+          .delete();
+      print("Custom plan deleted successfully!");
+    } catch (e) {
+      print("Error deleting custom plan: $e");
     }
   }
 }

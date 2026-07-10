@@ -18,7 +18,6 @@ class ProfileView extends StatelessWidget {
         int totalWorkouts = 0;
         int avgFormScore = 0;
         int totalReps = 0;
-        int currentStreak = 0;
 
         if (snapshot.hasData) {
           final workouts = snapshot.data!.docs;
@@ -32,7 +31,6 @@ class ProfileView extends StatelessWidget {
               totalScore += (data['formScore'] as num?)?.toInt() ?? 0;
             }
             avgFormScore = (totalScore / workouts.length).round();
-            currentStreak = 1; // Simplified streak
           }
         }
 
@@ -151,7 +149,6 @@ class ProfileView extends StatelessWidget {
                             // 📝 The text that gets sent to WhatsApp
                             String report =
                                 "📊 *Rehab Ai Progress Report*\n\n"
-                                "🔥 Current Streak: $currentStreak days\n"
                                 "🏋️ Total Workouts: $totalWorkouts\n"
                                 "📈 Avg Form Score: $avgFormScore%\n"
                                 "💪 Total Reps: $totalReps\n\n"

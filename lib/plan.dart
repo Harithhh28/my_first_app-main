@@ -418,6 +418,13 @@ class _PlanScreenState extends State<PlanScreen> {
                 for (var doc in snapshot.data!.docs) {
                   final data = doc.data() as Map<String, dynamic>;
                   final title = data['title'] ?? "Custom Protocol";
+
+                  // Filter out built-in plans to avoid duplicate cards in the directory
+                  if (title == "Shoulder Recovery" ||
+                      title == "Knee Recovery" ||
+                      title == "The Recovery Mix") {
+                    continue;
+                  }
                   final description = data['description'] ?? "";
                   final bulletsDynamic = data['bullets'] ?? [];
                   final bullets = List<String>.from(bulletsDynamic.map((e) => e.toString()));
@@ -437,6 +444,7 @@ class _PlanScreenState extends State<PlanScreen> {
                       ],
                       activePlanTitle: activePlanTitle,
                       customWeeks: customWeeks,
+                      canDelete: true,
                     ),
                   );
                   listItems.add(const SizedBox(height: 16));
@@ -470,6 +478,7 @@ class _PlanScreenState extends State<PlanScreen> {
     required List<Color> bgGradientColors,
     required String activePlanTitle,
     List<dynamic>? customWeeks,
+    bool canDelete = false,
   }) {
     bool isActive = activePlanTitle == title;
 
@@ -536,7 +545,8 @@ class _PlanScreenState extends State<PlanScreen> {
                     ),
                   ),
                 ),
-                if (isActive)
+                const SizedBox(width: 8),
+                if (isActive) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -567,6 +577,66 @@ class _PlanScreenState extends State<PlanScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (canDelete)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          backgroundColor: const Color(0xFF131A2E),
+                          title: const Text(
+                            "Delete Plan",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          content: Text(
+                            "Are you sure you want to delete '$title'?",
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text(
+                                "Cancel",
+                                style: TextStyle(color: Colors.blueGrey),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text(
+                                "Delete",
+                                style: TextStyle(color: Colors.redAccent),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await DatabaseService().deleteCustomPlan(title);
+                        if (isActive) {
+                          await DatabaseService().setActivePlan("Shoulder Recovery");
+                        }
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("'$title' deleted successfully"),
+                            backgroundColor: Colors.redAccent,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent.withValues(alpha: 0.8),
+                        size: 22,
+                      ),
                     ),
                   ),
               ],
